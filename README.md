@@ -4,7 +4,7 @@ An interactive visualization of Stack operations using an array.
 
 ## Interactive Visualization
 
-👉 [Open the Interactive Stack Visualization](./)
+👉 [Open the Interactive Stack Visualization](https://surajit-sahoo-iitian.github.io/stack-visualizer/)
 
 ## Features
 
