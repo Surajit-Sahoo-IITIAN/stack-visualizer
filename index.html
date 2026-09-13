@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interactive Stack — Array Implementation</title>
+<style>
+body{margin:0;background:#f7f9fc;color:#172033;font-family:Arial,sans-serif}
+.app{max-width:1120px;margin:auto;padding:22px}
+.bar,.card{background:#fff;border:1px solid #d8dee8;border-radius:14px;padding:15px}
+h1{margin:0 0 5px;font-size:27px}.muted{color:#64748b;font-size:14px}
+.bar{margin:15px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+button,select{font:inherit;border:1px solid #cbd5e1;border-radius:8px;padding:9px 13px;background:#fff}
+button{cursor:pointer;font-weight:600}button.primary{background:#e8eefc;border-color:#3157a4}
+button:disabled{opacity:.4;cursor:not-allowed}
+.grid{display:grid;grid-template-columns:1fr 320px;gap:14px}
+.step{text-align:center;font-weight:bold;font-size:18px;margin-bottom:8px}
+canvas{width:100%;height:auto;display:block}
+.desc{text-align:center;color:#64748b;min-height:22px;margin:7px}
+.controls{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.legend{display:flex;justify-content:center;gap:13px;flex-wrap:wrap;margin-top:10px;font-size:13px;color:#64748b}
+.dot{display:inline-block;width:12px;height:12px;border-radius:50%;vertical-align:-1px;margin-right:4px}
+h2{font-size:18px;margin-top:8px}
+.note{background:#f8fafc;border-radius:9px;padding:10px;line-height:1.55}
+.op{padding:7px 9px;margin:4px 0;border-radius:7px;background:#f5f7fa}
+.active{background:#e8eefc;outline:2px solid #3157a4;font-weight:bold}
+.state{font-family:Consolas,monospace;font-size:15px;line-height:1.7}
+.code{background:#172033;color:#fff;border-radius:9px;padding:10px;font-family:Consolas,monospace;font-size:13px;line-height:1.45}
+.status{font-weight:bold;text-align:center;margin-top:8px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>Interactive Stack — Array Implementation</h1>
+<div class="muted">Enter values yourself and perform PUSH, POP, PEEK and DISPLAY step by step.</div>
+
+<div class="bar">
+<b>Choose an operation:</b>
+<select id="op">
+<option value="push">PUSH</option>
+<option value="pop">POP</option>
+<option value="peek">PEEK</option>
+<option value="display">DISPLAY</option>
+</select>
+<input id="value" type="number" placeholder="Enter value" min="-999" max="999" style="width:110px;padding:9px;border:1px solid #cbd5e1;border-radius:8px">
+<button id="apply" class="primary">Apply Operation</button>
+<button id="play">▶ Play</button>
+</div>
+
+<div class="grid">
+<div class="card">
+<div id="step" class="step"></div>
+<canvas id="cv" width="760" height="480"></canvas>
+<div id="desc" class="desc"></div>
+<div class="controls">
+<button id="first">|&lt; First</button>
+<button id="prev">&lt; Previous</button>
+<button id="next" class="primary">Next &gt;</button>
+<button id="last">Last &gt;|</button>
+<button id="reset">Reset</button>
+</div>
+<div id="legend" class="legend"></div>
+</div>
+
+<div class="card">
+<h2>Stack State</h2>
+<div id="state" class="note state"></div>
+
+<h2>Current Operation</h2>
+<div id="current" class="note"></div>
+
+<h2>Operation Sequence</h2>
+<div id="ops"></div>
+
+<h2>Corresponding C Logic</h2>
+<div id="code" class="code"></div>
+</div>
+</div>
+</div>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id);
+const cv=$("cv"),ctx=cv.getContext("2d");
+const MAX=5;
+let stack=[], top=-1, step=0, timer=null;
+let operations=[];
+
+function cloneState(){return {stack:[...stack],top};}
+
+function execute(op){
+  const name=op[0], value=op[1];
+  if(name==="PUSH"){
+    if(top===MAX-1) return {ok:false,msg:"Stack Overflow: the stack is full."};
+    top++; stack[top]=value;
+    return {ok:true,msg:`PUSH(${value}) inserts ${value} at the TOP.`};
+  }
+  if(name==="POP"){
+    if(top===-1) return {ok:false,msg:"Stack Underflow: the stack is empty."};
+    const removed=stack[top]; top--;
+    return {ok:true,msg:`POP() removes ${removed} from the TOP.`};
+  }
+  if(name==="PEEK"){
+    if(top===-1) return {ok:false,msg:"Stack is Empty: PEEK cannot return a value."};
+    return {ok:true,msg:`PEEK() reads the TOP value: ${stack[top]}. The stack is unchanged.`};
+  }
+  if(name==="DISPLAY"){
+    if(top===-1) return {ok:false,msg:"Stack is Empty."};
+    return {ok:true,msg:`DISPLAY prints from TOP to bottom: ${stack.slice(0,top+1).reverse().join(" ")}.`};
+  }
+}
+
+function buildStates(){
+  let s=[], arr=[], t=-1;
+  s.push({stack:[],top:-1,msg:"Initial configuration: stack is empty."});
+  for(const op of operations){
+    let name=op[0], value=op[1], msg="";
+    if(name==="PUSH"){
+      if(t===MAX-1) msg="Stack Overflow: PUSH cannot be performed because the stack is full.";
+      else {t++;arr[t]=value;msg=`PUSH(${value}): ${value} is inserted at index ${t}.`;}
+    }else if(name==="POP"){
+      if(t===-1) msg="Stack Underflow: POP cannot be performed because the stack is empty.";
+      else {let r=arr[t];t--;msg=`POP(): ${r} is removed. top moves from ${t+1} to ${t}.`;}
+    }else if(name==="PEEK"){
+      if(t===-1) msg="PEEK(): stack is empty.";
+      else msg=`PEEK(): TOP value is ${arr[t]}. No element is removed.`;
+    }else{
+      if(t===-1) msg="DISPLAY(): stack is empty.";
+      else msg=`DISPLAY(): ${arr.slice(0,t+1).reverse().join(" ")} (TOP to bottom).`;
+    }
+    s.push({stack:arr.slice(),top:t,msg});
+  }
+  return s;
+}
+
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.roundRect(x,y,w,h,r);
+  ctx.fill();
+}
+
+function draw(){
+  const S=buildStates()[step];
+  ctx.clearRect(0,0,760,480);
+
+  // Title inside canvas
+  ctx.fillStyle="#172033";ctx.font="bold 22px Arial";ctx.textAlign="center";
+  ctx.fillText("STACK — ARRAY REPRESENTATION",380,34);
+
+  const left=165, cellW=250, cellH=58, bottom=390;
+
+  // array cells
+  for(let i=0;i<MAX;i++){
+    const y=bottom-i*cellH;
+    ctx.fillStyle="#ffffff";
+    ctx.strokeStyle="#3157a4";
+    ctx.lineWidth=2;
+    ctx.fillRect(left,y-cellH,cellW,cellH);
+    ctx.strokeRect(left,y-cellH,cellW,cellH);
+
+    ctx.fillStyle="#64748b";
+    ctx.font="14px Arial";ctx.textAlign="right";
+    ctx.fillText("index "+i,left-15,y-22);
+
+    if(i<=S.top){
+      ctx.fillStyle="#3157a4";
+      ctx.fillRect(left+2,y-cellH+2,cellW-4,cellH-4);
+      ctx.fillStyle="#fff";
+      ctx.font="bold 22px Arial";ctx.textAlign="center";
+      ctx.fillText(S.stack[i],left+cellW/2,y-21);
+    }else{
+      ctx.fillStyle="#94a3b8";
+      ctx.font="16px Arial";ctx.textAlign="center";
+      ctx.fillText("empty",left+cellW/2,y-21);
+    }
+  }
+
+  // top pointer
+  if(S.top>=0){
+    const y=bottom-S.top*cellH-cellH/2;
+    ctx.strokeStyle="#68192A";ctx.fillStyle="#68192A";ctx.lineWidth=3;
+    ctx.beginPath();ctx.moveTo(left+cellW+100,y);ctx.lineTo(left+cellW+12,y);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(left+cellW+12,y);ctx.lineTo(left+cellW+25,y-8);ctx.lineTo(left+cellW+25,y+8);ctx.closePath();ctx.fill();
+    ctx.font="bold 20px Arial";ctx.textAlign="left";
+    ctx.fillText("TOP",left+cellW+105,y+7);
+    ctx.font="bold 18px Consolas";ctx.fillText("top = "+S.top,left+cellW+85,y+38);
+  }else{
+    ctx.fillStyle="#68192A";ctx.font="bold 20px Arial";ctx.textAlign="left";
+    ctx.fillText("TOP → empty",left+cellW+75,bottom-cellH/2+7);
+    ctx.font="bold 18px Consolas";ctx.fillText("top = -1",left+cellW+85,bottom-cellH/2+38);
+  }
+
+  ctx.fillStyle="#64748b";ctx.font="14px Arial";ctx.textAlign="center";
+  ctx.fillText("Array index increases upward →",380,440);
+
+  // highlight operation result
+  if(step>0){
+    const op=operations[step-1];
+    ctx.fillStyle="#68192A";ctx.font="bold 17px Arial";
+    ctx.fillText(op[0]+(op.length>1?"("+op[1]+")":"()"),380,468);
+  }
+}
+
+function codeFor(op){
+ const name=op[0];
+ if(name==="PUSH") return `if (top == MAX - 1)
+{
+    printf("Stack Overflow");
+}
+else
+{
+    top++;
+    stack[top] = value;
+}`;
+ if(name==="POP") return `if (top == -1)
+{
+    printf("Stack Underflow");
+}
+else
+{
+    value = stack[top];
+    top--;
+}`;
+ if(name==="PEEK") return `if (top == -1)
+{
+    printf("Stack is Empty");
+}
+else
+{
+    printf("Top = %d", stack[top]);
+}`;
+ return `if (top == -1)
+{
+    printf("Stack is Empty");
+}
+else
+{
+    for (i = top; i >= 0; i--)
+        printf("%d ", stack[i]);
+}`;
+}
+
+function update(){
+ const states=buildStates(),S=states[step],total=operations.length;
+ const op=step?operations[step-1]:null;
+ $("step").textContent=`Step ${step} of ${total}`;
+ $("desc").textContent=S.msg;
+ $("state").innerHTML=`<b>MAX = ${MAX}</b><br>
+top = <b>${S.top}</b><br>
+stack = [${Array.from({length:MAX},(_,i)=>i<=S.top?S.stack[i]:"—").join(", ")}]<br>
+${S.top>=0?`TOP element = <b>${S.stack[S.top]}</b>`:"Stack is EMPTY"}`;
+ $("current").innerHTML=op?`<b>${op[0]}${op.length>1?"("+op[1]+")":"()"}</b><br>${S.msg}`:"<b>Initial state</b><br>No operation has been performed yet. Enter a value and choose PUSH, or choose POP / PEEK / DISPLAY.";
+ $("ops").innerHTML=operations.map((o,i)=>`<div class="op ${i===step-1?"active":""}">
+<b>${i+1}.</b> ${o[0]}${o.length>1?"("+o[1]+")":"()"}</div>`).join("");
+ $("code").textContent=op?codeFor(op):`int stack[MAX];
+int top = -1;`;
+ $("first").disabled=$("prev").disabled=step===0;
+ $("next").disabled=$("last").disabled=step===total;
+ $("play").textContent=timer?"⏸ Pause":"▶ Play";
+ $("legend").innerHTML=`<span><i class="dot" style="background:#3157a4"></i>Occupied element</span>
+<span><i class="dot" style="background:#94a3b8"></i>Empty array cell</span>
+<span><i class="dot" style="background:#68192A"></i>TOP pointer</span>`;
+ draw();
+}
+
+function setStep(v){
+ step=Math.max(0,Math.min(operations.length,v));update();
+}
+
+function stop(){if(timer){clearInterval(timer);timer=null;}}
+
+$("first").onclick=()=>{stop();setStep(0)};
+$("prev").onclick=()=>{stop();setStep(step-1)};
+$("next").onclick=()=>{stop();setStep(step+1)};
+$("last").onclick=()=>{stop();setStep(operations.length)};
+$("reset").onclick=()=>{stop();setStep(0)};
+
+$("apply").onclick=()=>{
+ stop();
+ const name=$("op").value.toUpperCase();
+
+ if(name==="PUSH"){
+   const raw=$("value").value.trim();
+
+   if(raw===""){
+     alert("Please enter a value for PUSH.");
+     return;
+   }
+
+   const v=Number(raw);
+
+   if(!Number.isFinite(v)){
+     alert("Please enter a valid numeric value.");
+     return;
+   }
+
+   operations.push([name,v]);
+ }else{
+   operations.push([name]);
+ }
+
+ setStep(operations.length);
+
+ if(name==="PUSH"){
+   $("value").value="";
+   $("value").focus();
+ }
+};
+
+$("play").onclick=()=>{
+ if(timer){stop();update();return}
+ if(step>=operations.length)step=0;
+ timer=setInterval(()=>{
+   if(step>=operations.length){stop();update();return}
+   step++;update();
+ },900);
+ update();
+};
+
+window.onresize=draw;
+update();
+})();
+</script>
+</body>
+</html>
